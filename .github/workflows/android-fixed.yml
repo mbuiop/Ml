@@ -1,0 +1,203 @@
+name: Build Android APK - Fixed
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Clean project structure
+      run: |
+        # پاکسازی و ایجاد ساختار جدید
+        rm -rf app build.gradle settings.gradle gradle/
+        mkdir -p app/src/main/java/com/example/myapp
+        mkdir -p app/src/main/res/layout
+        mkdir -p app/src/main/res/values
+
+    - name: Create correct Gradle files
+      run: |
+        # ایجاد settings.gradle درست
+        cat > settings.gradle << 'EOF'
+        rootProject.name = "MyAndroidApp"
+        include ':app'
+        EOF
+
+        # ایجاد build.gradle درست (فایل اصلی)
+        cat > build.gradle << 'EOF'
+        // Top-level build file where you can add configuration options common to all sub-projects/modules.
+        plugins {
+            id 'com.android.application' version '8.0.0' apply false
+        }
+        EOF
+
+        # ایجاد app/build.gradle درست
+        cat > app/build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application'
+        }
+
+        android {
+            namespace 'com.example.myapp'
+            compileSdk 34
+
+            defaultConfig {
+                applicationId "com.example.myapp"
+                minSdk 21
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+
+            buildTypes {
+                release {
+                    minifyEnabled false
+                    proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                }
+            }
+            
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
+        }
+
+        dependencies {
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+            implementation 'com.google.android.material:material:1.9.0'
+            implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+        }
+        EOF
+
+    - name: Create Android files
+      run: |
+        # ایجاد AndroidManifest.xml
+        cat > app/src/main/AndroidManifest.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.example.myapp">
+
+            <application
+                android:allowBackup="true"
+                android:icon="@mipmap/ic_launcher"
+                android:label="My App"
+                android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+                
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:label="My App">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+                
+            </application>
+        </manifest>
+        EOF
+
+        # ایجاد layout ساده
+        cat > app/src/main/res/layout/activity_main.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <androidx.constraintlayout.widget.ConstraintLayout 
+            xmlns:android="http://schemas.android.com/apk/res/android"
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/textView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Hello from GitHub Actions! ✅"
+                android:textSize="24sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+        EOF
+
+        # ایجاد strings.xml
+        cat > app/src/main/res/values/strings.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <string name="app_name">My App</string>
+        </resources>
+        EOF
+
+        # ایجاد MainActivity.java
+        cat > app/src/main/java/com/example/myapp/MainActivity.java << 'EOF'
+        package com.example.myapp;
+
+        import androidx.appcompat.app.AppCompatActivity;
+        import android.os.Bundle;
+
+        public class MainActivity extends AppCompatActivity {
+            @Override
+            protected void onCreate(Bundle savedInstanceState) {
+                super.onCreate(savedInstanceState);
+                setContentView(R.layout.activity_main);
+            }
+        }
+        EOF
+
+    - name: Build with Gradle Wrapper
+      run: |
+        # دانلود و استفاده از Gradle Wrapper
+        wget https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar
+        mkdir -p gradle/wrapper
+        mv gradle-wrapper.jar gradle/wrapper/
+        
+        # ایجاد gradle-wrapper.properties
+        cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-all.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        EOF
+
+        # ایجاد gradlew ساده
+        cat > gradlew << 'EOF'
+        #!/bin/bash
+        echo "Using system Gradle..."
+        gradle "$@"
+        EOF
+        chmod +x gradlew
+
+    - name: Install and Build
+      run: |
+        # نصب Android SDK و ساخت
+        sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        yes | sdkmanager --licenses
+        
+        # ساخت پروژه
+        ./gradlew assembleDebug --no-daemon --stacktrace
+        
+    - name: Upload APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-apk-success
+        path: app/build/outputs/apk/**/*.apk
+        retention-days: 7
+        
+    - name: Show build results
+      run: |
+        echo "📱 Build completed!"
+        find . -name "*.apk" -type f
